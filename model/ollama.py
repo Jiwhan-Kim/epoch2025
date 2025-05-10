@@ -1,6 +1,6 @@
 import requests
 
-prompts = [
+prompts_front = [
     "Forget every chess moves I gave before",
     "You will play the chess. I will give the board and return the best move.",
     "You are white",
@@ -12,14 +12,9 @@ prompts = [
     "Examples: king-e2-e3",
     "Examples: queen-a7-a6",
     "Now the map is:",
-    "black-rook black-knight black-bishop black-queen black-king black-bishop black-knight black-rook",
-    "black-pawn black-pawn black-pawn black-pawn black-pawn black-pawn black-pawn pawn",
-    "none none none none none none none none",
-    "none none none none none none none none",
-    "none none none none none none none none",
-    "none none none none none none none none",
-    "white-rook white-knight white-bishop white-queen white-king white-bishop white-knight white-rook",
-    "white-pawn white-pawn white-pawn white-pawn white-pawn white-pawn white-pawn white-pawn",
+]
+
+prompts_rear = [
     "You give me the answer. You must not give any other message rather than <piece>-<from>-<to>",
 ]
 
@@ -35,14 +30,23 @@ prompts_log = [
     "No other characters should be given",
 ]
 
-response = requests.post(
-    "http://localhost:11434/api/generate",
-    json={
-        "model": "llama3.2",
-        "prompt": "\n".join(prompts_log),
-        "stream": False
-    }
-)
+def get_ai_answer(board):
+    board_list = []
+    for pieceList in board:
+        board_str = ""
+        for piece in pieceList:
+            board_str += piece + " "
+        board_list.append(board_str)
 
-print(response)
-print(response.json()["response"])
+    prompts = prompts_front + board_list + prompts_rear
+
+    response = requests.post(
+        "http://localhost:11434/api/generate",
+        json={
+            "model": "llama3.2",
+            "prompt": "\n".join(prompts),
+            "stream": False
+        }
+    )
+
+    return response.json()["response"]
