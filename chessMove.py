@@ -148,3 +148,4 @@ def getAttackPoses(board, piece_type, position):
                 poses.append((r2, c2))
 
     return poses
+

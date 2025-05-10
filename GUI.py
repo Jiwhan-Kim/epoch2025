@@ -36,6 +36,48 @@ def get_attack_board(board, attacker_color):
                         attack_board[x][y] = True
     return attack_board
 
+def is_king_in_check(board, color):
+    king_pos = None
+    for row in range(8):
+        for col in range(8):
+            piece = board[row][col]
+            if piece and piece.color == color and piece.kind == "king":
+                king_pos = (row, col)
+                break
+    if not king_pos:
+        return True  # King not found, technically in check
+
+    attack_board = get_attack_board(board, "black" if color == "white" else "white")
+    return attack_board[king_pos[0]][king_pos[1]]
+
+def is_king_in_check_after_move(board, from_pos, to_pos):
+    temp_board = copy.deepcopy(board)
+    r1 = 8 - int(from_pos[1])
+    c1 = ord(from_pos[0].lower()) - ord('a')
+    r2 = 8 - int(to_pos[1])
+    c2 = ord(to_pos[0].lower()) - ord('a')
+
+    piece = temp_board[r1][c1]
+    temp_board[r2][c2] = piece
+    temp_board[r1][c1] = None
+
+    if not piece:
+        return False
+
+    return is_king_in_check(temp_board, piece.color)
+
+def update_check_status_after_move(board, moved_color):
+    """
+    Given the new board after a move and the color that just moved,
+    return True if their king is now in check, otherwise False.
+    """
+    return is_king_in_check(board, moved_color)
+
+def show_check_text(screen, font, board, turn):
+    if is_king_in_check(board, turn):
+        text = font.render("Check!", True, (255, 0, 0))
+        screen.blit(text, (645, 140))
+
 def draw_board(screen, attack_board=None):
     for row in range(ROWS):
         for col in range(COLS):
@@ -43,8 +85,6 @@ def draw_board(screen, attack_board=None):
             if attack_board and attack_board[row][col]:
                 color = DANGER_COLOR
             pygame.draw.rect(screen, color, (col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
-
-
 
 def load_piece_images():
     piece_images = {}
@@ -91,6 +131,73 @@ def print_board(board):
 def index_to_pos(row, col):
     return f"{chr(col + ord('a'))}{8 - row}"
 
+def is_king_checkmate(board, attacker_color):
+    """
+    Return True if the given color's king is in checkmate.
+    """
+    # 1. find king
+    for r in range(8):
+        for c in range(8):
+            piece = board[r][c]
+            if piece and piece.color == attacker_color and piece.kind == "king":
+                king_pos = (r, c)
+                break
+    else:
+        return True  # No king? treat as checkmate
+
+    from_row, from_col = king_pos
+    from_pos = f"{chr(from_col + ord('a'))}{8 - from_row}"
+
+    for dr in [-1, 0, 1]:
+        for dc in [-1, 0, 1]:
+            if dr == 0 and dc == 0:
+                continue
+            to_row = from_row + dr
+            to_col = from_col + dc
+            if 0 <= to_row < 8 and 0 <= to_col < 8:
+                to_pos = f"{chr(to_col + ord('a'))}{8 - to_row}"
+                move_str = f"King-{from_pos}-{to_pos}"
+                if isLegalMove(board, move_str):
+                    # simulate move
+                    temp_board = copy.deepcopy(board)
+                    temp_board[to_row][to_col] = temp_board[from_row][from_col]
+                    temp_board[from_row][from_col] = None
+                    if not is_king_in_check(temp_board, attacker_color):
+                        return False  # has a safe move
+    return True  # no safe move
+
+def is_stalemate(board, color):
+    """
+    Return True if the player of 'color' has no legal moves and is NOT in check (stalemate).
+    """
+    # 1. 킹이 체크 상태이면 스테일메이트 아님
+    if is_king_in_check(board, color):
+        return False
+
+    # 2. 자신의 모든 말에 대해 가능한 이동이 1개라도 있는지 확인
+    for r1 in range(8):
+        for c1 in range(8):
+            piece = board[r1][c1]
+            if not piece or piece.color != color:
+                continue
+            from_pos = f"{chr(c1 + ord('a'))}{8 - r1}"
+            for r2 in range(8):
+                for c2 in range(8):
+                    if r1 == r2 and c1 == c2:
+                        continue
+                    to_pos = f"{chr(c2 + ord('a'))}{8 - r2}"
+                    move_str = f"{piece.kind.capitalize()}-{from_pos}-{to_pos}"
+                    if isLegalMove(board, move_str):
+                        temp_board = copy.deepcopy(board)
+                        temp_board[r2][c2] = temp_board[r1][c1]
+                        temp_board[r1][c1] = None
+                        if not is_king_in_check(temp_board, color):
+                            return False  # valid move exists
+    return True  # no valid moves and not in check → stalemate
+
+def is_game_ended(board, color):
+    return is_king_checkmate(board, color) or is_stalemate(board, color)
+
 def run_chess_gui(board):
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -127,6 +234,7 @@ def run_chess_gui(board):
         screen.blit(font.render(">", True, (0, 0, 0)), (BUTTON_FORWARD.x + 8, BUTTON_FORWARD.y + 5))
         screen.blit(font.render("Beginner", True, (0, 0, 0)), (BUTTON_BEGINNER.x + 2, BUTTON_BEGINNER.y + 5))
 
+        show_check_text(screen, font, board, current_turn)
         pygame.display.flip()
 
         for event in pygame.event.get():
@@ -169,7 +277,7 @@ def run_chess_gui(board):
                     piece = board[from_row][from_col]
                     if piece:
                         move_str = f"{piece.kind.capitalize()}-{index_to_pos(from_row, from_col)}-{index_to_pos(row, col)}"
-                        if isLegalMove(board, move_str, game_state) and current_state_index == len(board_history) - 1:
+                        if isLegalMove(board, move_str, game_state) and current_state_index == len(board_history) - 1 and not is_king_in_check(board, current_turn):
                             if piece.kind == "king" and abs(col - from_col) == 2:
                                 rook_from = 0 if col < from_col else 7
                                 rook_to = from_col - 1 if col < from_col else from_col + 1
@@ -195,6 +303,7 @@ def run_chess_gui(board):
                             current_state_index += 1
 
                             print_board(board)
+
                             turn_count += 1
                             current_turn = "black" if current_turn == "white" else "white"
                         else:
