@@ -384,6 +384,10 @@ def run_chess_gui(board):
                                 if isLegalMove(board, move_str, game_state):
                                     board[to_row][to_col] = piece
                                     board[from_row][from_col] = None
+
+                                    # 프로모션 (AI 수)
+                                    if piece.kind == "pawn" and (to_row == 0 or to_row == 7):
+                                        board[to_row][to_col] = Piece(piece.color, "queen")
                                     game_state["turnCount"] = turn_count  # Removed lastMove usage
                                     move_history.append(move_str)
                                     board_history = board_history[:current_state_index + 1]
@@ -466,6 +470,10 @@ def run_chess_gui(board):
 
                             board[row][col] = piece
                             board[from_row][from_col] = None
+
+                            # 프로모션 (사용자 수)
+                            if piece.kind == "pawn" and (row == 0 or row == 7):
+                                board[row][col] = Piece(piece.color, "queen")
 
                             if piece.kind in ["king", "rook"]:
                                 piece.has_moved = True
