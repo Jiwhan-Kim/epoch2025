@@ -20,6 +20,15 @@ BUTTON_FORWARD = pygame.Rect(680, 50, 30, 30)
 BUTTON_BEGINNER = pygame.Rect(640, 90, 80, 30)
 BUTTON_RESTART = pygame.Rect(640, 130, 80, 30)
 BUTTON_AI = pygame.Rect(640, 250, 80, 30)
+PIECE_VALUES = {
+    "king": 0,       # 체크메이트는 따로 처리
+    "queen": 9,
+    "rook": 5,
+    "bishop": 3,
+    "knight": 3,
+    "pawn": 1,
+}
+
 
 def get_attack_board(board, attacker_color):
     attack_board = [[False for _ in range(8)] for _ in range(8)]
@@ -211,6 +220,51 @@ def is_stalemate(board, color):
 def is_game_ended(board, color):
     return is_king_checkmate(board, color) or is_stalemate(board, color)
 
+def evaluate_board(board, color):
+    """Return material score from the perspective of `color`."""
+    score = 0
+    for row in board:
+        for piece in row:
+            if piece:
+                value = PIECE_VALUES.get(piece.kind, 0)
+                if piece.color == color:
+                    score += value
+                else:
+                    score -= value
+    return score
+
+def get_best_move(board, color, game_state):
+    """Return best move_str for the given color based on simple evaluation."""
+    best_score = float('-inf')
+    best_move = None
+
+    for r1 in range(8):
+        for c1 in range(8):
+            piece = board[r1][c1]
+            if not piece or piece.color != color:
+                continue
+
+            from_pos = f"{chr(c1 + ord('a'))}{8 - r1}"
+            for r2 in range(8):
+                for c2 in range(8):
+                    if r1 == r2 and c1 == c2:
+                        continue
+                    to_pos = f"{chr(c2 + ord('a'))}{8 - r2}"
+                    move_str = f"{piece.kind.capitalize()}-{from_pos}-{to_pos}"
+
+                    if isLegalMove(board, move_str, game_state):
+                        # simulate move
+                        temp_board = copy.deepcopy(board)
+                        temp_board[r2][c2] = temp_board[r1][c1]
+                        temp_board[r1][c1] = None
+
+                        score = evaluate_board(temp_board, color)
+                        if score > best_score:
+                            best_score = score
+                            best_move = move_str
+
+    return best_move
+
 def run_chess_gui(board):
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -251,7 +305,7 @@ def run_chess_gui(board):
         screen.blit(font.render("Beginner", True, (0, 0, 0)), (BUTTON_BEGINNER.x + 2, BUTTON_BEGINNER.y + 5))
 
         pygame.draw.rect(screen, (200, 200, 255), BUTTON_AI)
-        screen.blit(font.render("vs AI", True, (0, 0, 0)), (650, 255))
+        screen.blit(font.render("AI move", True, (0, 0, 0)), (650, 255))
         screen.blit(font.render(result_message, True, (255, 0, 0)), (635, 205))
 
         show_check_text(screen, font, board, current_turn)
@@ -280,7 +334,7 @@ def run_chess_gui(board):
                 if BUTTON_AI.collidepoint(event.pos):
                     if not game_over and current_turn == "black":
                         while True:
-                            move_str = get_ai_answer([[str(p) if p else "none" for p in row] for row in board])
+                            move_str = get_best_move(board, current_turn, game_state)
                             print(move_str)
                             try:
                                 _, from_pos, to_pos = move_str.split("-")
@@ -291,7 +345,8 @@ def run_chess_gui(board):
                                 piece = board[from_row][from_col]
                                 if piece and isLegalMove(board, move_str, game_state):
                                     break
-                            except error:
+                            except:
+                                print("ERROR")
                                 continue
                         try:
                             _, from_pos, to_pos = move_str.split("-")
@@ -304,14 +359,20 @@ def run_chess_gui(board):
                                 if isLegalMove(board, move_str, game_state):
                                     board[to_row][to_col] = piece
                                     board[from_row][from_col] = None
-                                    game_state["turnCount"] = turn_count
-                                    turn_count += 1
+                                    game_state["turnCount"] = turn_count  # Removed lastMove usage
                                     move_history.append(move_str)
+                                    board_history = board_history[:current_state_index + 1]
                                     board_history.append(copy.deepcopy(board))
-                                    current_turn = "white"
+                                    current_state_index += 1
+
+                                    print_board(board)
+
+                                    turn_count += 1
+                                    current_turn = "black" if current_turn == "white" else "white"
                         except Exception as e:
                             print("AI move error:", e)
-                    return
+
+                print(board)
                 if game_over and pygame.Rect(640, 170, 80, 30).collidepoint(event.pos):
                     board = create_initial_board()
                     piece_images = load_piece_images()
