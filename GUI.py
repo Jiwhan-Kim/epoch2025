@@ -16,6 +16,7 @@ BUTTON_HISTORY = pygame.Rect(640, 10, 70, 30)
 BUTTON_BACK = pygame.Rect(640, 50, 30, 30)
 BUTTON_FORWARD = pygame.Rect(680, 50, 30, 30)
 BUTTON_BEGINNER = pygame.Rect(640, 90, 80, 30)
+BUTTON_RESTART = pygame.Rect(640, 130, 80, 30)
 
 def get_attack_board(board, attacker_color):
     attack_board = [[False for _ in range(8)] for _ in range(8)]
@@ -219,6 +220,8 @@ def run_chess_gui(board):
     beginner_mode = False
 
     running = True
+    game_over = False
+    result_message = ""
     while running:
         attack_board = get_attack_board(board, 'black' if current_turn == 'white' else 'white') if beginner_mode else None
 
@@ -235,6 +238,20 @@ def run_chess_gui(board):
         screen.blit(font.render("Beginner", True, (0, 0, 0)), (BUTTON_BEGINNER.x + 2, BUTTON_BEGINNER.y + 5))
 
         show_check_text(screen, font, board, current_turn)
+        if not game_over:
+            if is_king_in_check(board, current_turn) and is_king_checkmate(board, current_turn):
+                result_message = f"{('White' if current_turn == 'black' else 'Black')} wins by checkmate"
+                game_over = True
+            elif is_stalemate(board, current_turn):
+                result_message = "Stalemate"
+                game_over = True
+
+        if game_over:
+            pygame.draw.rect(screen, (255, 200, 200), (640, 170, 80, 30))
+            screen.blit(font.render("Restart", True, (0, 0, 0)), (645, 175))
+            screen.blit(font.render(result_message, True, (255, 0, 0)), (640, 210))
+
+        show_check_text(screen, font, board, current_turn)
         pygame.display.flip()
 
         for event in pygame.event.get():
@@ -242,6 +259,21 @@ def run_chess_gui(board):
                 running = False
 
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if game_over and pygame.Rect(640, 170, 80, 30).collidepoint(event.pos):
+                    board = create_initial_board()
+                    piece_images = load_piece_images()
+                    dragging = False
+                    dragging_piece = None
+                    mouse_x, mouse_y = 0, 0
+                    turn_count = 1
+                    current_turn = "white"
+                    move_history.clear()
+                    board_history = [copy.deepcopy(board)]
+                    current_state_index = 0
+                    game_state["lastMove"] = None
+                    game_over = False
+                    result_message = ""
+                    continue
                 if BUTTON_HISTORY.collidepoint(event.pos):
                     print("\nMove History:")
                     for move in move_history:
@@ -265,6 +297,8 @@ def run_chess_gui(board):
 
                 col, row = event.pos[0] // SQUARE_SIZE, event.pos[1] // SQUARE_SIZE
                 if 0 <= row < 8 and 0 <= col < 8:
+                    if game_over:
+                        continue
                     if board[row][col] and board[row][col].color == current_turn:
                         dragging = True
                         dragging_piece = (row, col)
