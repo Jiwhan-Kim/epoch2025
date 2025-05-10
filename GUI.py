@@ -22,13 +22,15 @@ BUTTON_BEGINNER = pygame.Rect(640, 90, 80, 30)
 BUTTON_RESTART = pygame.Rect(640, 130, 80, 30)
 BUTTON_AI = pygame.Rect(640, 250, 80, 30)
 PIECE_VALUES = {
-    "king": 0,       # 체크메이트는 따로 처리
+    "king": 0,
     "queen": 9,
     "rook": 5,
     "bishop": 3,
     "knight": 3,
     "pawn": 1,
 }
+
+BUTTON_SWAP = pygame.Rect(640, 170, 80, 30)
 
 
 def get_attack_board(board, attacker_color):
@@ -293,6 +295,9 @@ def run_chess_gui(board):
 
     running = True
     game_over = False
+    swap_mode = False
+    swap_used = {"white": False, "black": False}
+    swap_selection = []
     result_message = ""
     while running:
         attack_board = get_attack_board(board, 'black' if current_turn == 'white' else 'white') if beginner_mode else None
@@ -310,7 +315,9 @@ def run_chess_gui(board):
         screen.blit(font.render("Beginner", True, (0, 0, 0)), (BUTTON_BEGINNER.x + 2, BUTTON_BEGINNER.y + 5))
 
         pygame.draw.rect(screen, (200, 200, 255), BUTTON_AI)
+        pygame.draw.rect(screen, (255, 220, 120), BUTTON_SWAP)
         screen.blit(font.render("AI move", True, (0, 0, 0)), (650, 255))
+        screen.blit(font.render("Swap", True, (0, 0, 0)), (655, 175))
         pygame.draw.rect(screen, (255, 255, 255), (630, 300, 90, 50))  # clear time display background
         screen.blit(font.render(result_message, True, (255, 0, 0)), (635, 205))
 
@@ -344,9 +351,9 @@ def run_chess_gui(board):
                 game_over = True
 
         if game_over:
-            pygame.draw.rect(screen, (255, 200, 200), (640, 170, 80, 30))
+            pygame.draw.rect(screen, (255, 200, 200), (640, 210, 80, 30))
             pygame.draw.rect(screen, (0, 0, 0), (630, 200, 90, 30))
-            screen.blit(font.render("Restart", True, (0, 0, 0)), (645, 175))
+            screen.blit(font.render("Restart", True, (0, 0, 0)), (645, 215))
 
         show_check_text(screen, font, board, current_turn)
         pygame.display.flip()
@@ -437,6 +444,11 @@ def run_chess_gui(board):
                         board = copy.deepcopy(board_history[current_state_index])
                         current_turn = "white" if current_state_index % 2 == 0 else "black"
                     continue
+                elif BUTTON_SWAP.collidepoint(event.pos):
+                    if not swap_used[current_turn]:
+                        swap_mode = not swap_mode
+                        swap_selection.clear()
+                    continue
                 elif BUTTON_BEGINNER.collidepoint(event.pos):
                     beginner_mode = not beginner_mode
                     continue
@@ -444,6 +456,17 @@ def run_chess_gui(board):
                 col, row = event.pos[0] // SQUARE_SIZE, event.pos[1] // SQUARE_SIZE
                 if 0 <= row < 8 and 0 <= col < 8:
                     if game_over:
+                        continue
+                    if swap_mode and not swap_used[current_turn]:
+                        if board[row][col] and board[row][col].color == current_turn and board[row][col].kind != "king":
+                            swap_selection.append((row, col))
+                            if len(swap_selection) == 2:
+                                r1, c1 = swap_selection[0]
+                                r2, c2 = swap_selection[1]
+                                board[r1][c1], board[r2][c2] = board[r2][c2], board[r1][c1]
+                                swap_used[current_turn] = True
+                                swap_mode = False
+                                swap_selection.clear()
                         continue
                     if board[row][col] and board[row][col].color == current_turn:
                         dragging = True
