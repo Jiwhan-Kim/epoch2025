@@ -1,138 +1,171 @@
-from dataclasses import dataclass, replace
-from enum import Enum, auto
-from typing import Optional, Tuple, List
+import re
+from copy import deepcopy
+from typing import List, Tuple
 
-# ─── Low–level helpers ──────────────────────────────────────────────────────────
-
-FILE_TO_IDX = {c: i for i, c in enumerate("ABCDEFGH")}
-IDX_TO_FILE = {i: c for c, i in FILE_TO_IDX.items()}
+# --------------------------------------------------------------------
+# Coordinate helpers
+# --------------------------------------------------------------------
+FILES = "abcdefghijklmnopqrstuvwxyz"               # extendable
+BOARD_SIZE = 8                                     # classic chess
 
 
 def square_to_coords(square: str) -> Tuple[int, int]:
-    """'A1' → (0,0)  |  'H8' → (7,7)"""
-    file, rank = square[0].upper(), int(
-        square[1])            # assumes legal input
-    return rank - 1, FILE_TO_IDX[file]
+    """
+    "a4" -> (row, col) where row 0 is black's back rank (rank 8)
+    Supports multi-letter files ("aa1") and multi-digit ranks ("a12").
+    """
+    m = re.fullmatch(r"([a-zA-Z]+)(\d+)", square.strip())
+    if not m:
+        raise ValueError(f"Bad square: {square}")
+    file_part, rank_part = m.groups()
+
+    # calculate 0-based file index (a=0, b=1 …, z=25, aa=26, ab=27, …)
+    col = 0
+    for ch in file_part.lower():
+        col = col * 26 + (ord(ch) - ord("a") + 1)
+    col -= 1
+
+    # rank 1 is white back rank → row 7
+    row = BOARD_SIZE - int(rank_part)
+    if not (0 <= row < BOARD_SIZE and 0 <= col < BOARD_SIZE):
+        raise ValueError(f"Square {square} is off the board")
+    return row, col
 
 
-def coords_to_square(rank: int, file: int) -> str:
-    return f"{IDX_TO_FILE[file]}{rank + 1}"
-
-# ─── Core chess data types (trimmed) ────────────────────────────────────────────
-
-
-class Color(Enum):
-    WHITE = auto()
-    BLACK = auto()
+# --------------------------------------------------------------------
+# Rule helpers
+# --------------------------------------------------------------------
+DIR_WHITE, DIR_BLACK = -1, +1                      # “forward” for each colour
 
 
-class Piece(Enum):
-    KING, QUEEN, ROOK, BISHOP, KNIGHT, PAWN = range(6)
+def path_clear(board: List[List[str]],
+               r0: int, c0: int, r1: int, c1: int) -> bool:
+    """True if every intermediate square on a rook/bishop/queen ray is empty."""
+    dr = (r1 - r0) and (1 if r1 > r0 else -1)
+    dc = (c1 - c0) and (1 if c1 > c0 else -1)
+    r, c = r0 + dr, c0 + dc
+    while (r, c) != (r1, c1):
+        if board[r][c]:
+            return False
+        r, c = r + dr, c + dc
+    return True
 
 
-@dataclass
-class Figure:
-    kind: Piece
-    color: Color
-    has_moved: bool = False              # castling / pawn logic helper
+# --------------------------------------------------------------------
+# Piece-specific legality checks
+# --------------------------------------------------------------------
+def legal_king(board, colour, r0, c0, r1, c1):
+    return max(abs(r1 - r0), abs(c1 - c0)) == 1
 
 
-Board = List[List[Optional[Figure]]]     # 8 × 8 grid
+def legal_knight(board, colour, r0, c0, r1, c1):
+    return sorted((abs(r1 - r0), abs(c1 - c0))) == [1, 2]
 
 
-@dataclass
-class GameState:
-    board: Board
-    side_to_move: Color                  # Color.WHITE / Color.BLACK
-    castling_rights: str                 # e.g. "KQkq"
-    en_passant_target: Optional[str]     # algebraic square like 'E6'
-    halfmove_clock: int                  # for 50-move rule
-    fullmove_number: int
-
-# ─── Move-application routine ───────────────────────────────────────────────────
+def legal_rook(board, colour, r0, c0, r1, c1):
+    return (r0 == r1 or c0 == c1) and path_clear(board, r0, c0, r1, c1)
 
 
-PIECE_TOKEN = {
-    "K": Piece.KING,   "Q": Piece.QUEEN, "R": Piece.ROOK,
-    "B": Piece.BISHOP, "N": Piece.KNIGHT, "P": Piece.PAWN,
+def legal_bishop(board, colour, r0, c0, r1, c1):
+    return abs(r1 - r0) == abs(c1 - c0) and path_clear(board, r0, c0, r1, c1)
+
+
+def legal_queen(board, colour, r0, c0, r1, c1):
+    return (legal_rook(board, colour, r0, c0, r1, c1) or
+            legal_bishop(board, colour, r0, c0, r1, c1))
+
+
+def legal_pawn(board, colour, r0, c0, r1, c1):
+    direction = DIR_WHITE if colour == "white" else DIR_BLACK
+    start_rank = 6 if colour == "white" else 1
+
+    # Simple one-square push
+    if c0 == c1 and r1 - r0 == direction and not board[r1][c1]:
+        return True
+    # Two squares from starting rank
+    if (c0 == c1 and r0 == start_rank and
+        r1 - r0 == 2 * direction and
+        not board[r0 + direction][c0] and
+            not board[r1][c1]):
+        return True
+    # Captures
+    if abs(c1 - c0) == 1 and r1 - r0 == direction and board[r1][c1]:
+        target_colour, _ = board[r1][c1].split("-")
+        return target_colour != colour
+    return False
+
+
+LEGALITY_DISPATCH = {
+    "king":   legal_king,
+    "queen":  legal_queen,
+    "rook":   legal_rook,
+    "bishop": legal_bishop,
+    "knight": legal_knight,
+    "pawn":   legal_pawn,
 }
 
+# --------------------------------------------------------------------
+# Public API
+# --------------------------------------------------------------------
 
-def apply_move(tokens: list[str], state: GameState) -> GameState:
+
+def move_piece(board: List[List[str]], move: List[str]) -> None:
     """
-    tokens: [<piece letter>, <from square>, <to square>]
-            e.g. ["N", "G1", "F3"]   or ["P", "E2", "E4"]
-    Returns a *new* GameState; original stays intact.
-    Assumes the move is *already known* to be legal.
+    `move` is like ["king", "a4", "a5"].
+    Mutates `board` if the move is legal; raises ValueError otherwise.
     """
-    piece_tok, from_sq, to_sq = tokens
-    kind = PIECE_TOKEN[piece_tok.upper()]
+    if len(move) != 3:
+        raise ValueError("Move must be [piece, from_sq, to_sq]")
 
-    r_from, c_from = square_to_coords(from_sq)
-    r_to,   c_to = square_to_coords(to_sq)
+    piece_name, from_sq, to_sq = (s.strip().lower() for s in move)
+    r0, c0 = square_to_coords(from_sq)
+    r1, c1 = square_to_coords(to_sq)
 
-    piece = state.board[r_from][c_from]
-    if piece is None:
+    piece_str = board[r0][c0]
+    if not piece_str:
         raise ValueError(f"No piece on {from_sq}")
-    if piece.kind != kind or piece.color != state.side_to_move:
-        raise ValueError("Piece mismatch or not your turn")
+    colour, real_piece = piece_str.split("-")
+    if real_piece != piece_name:
+        raise ValueError(f"{from_sq} contains a {
+                         real_piece}, not a {piece_name}")
 
-    # --- clone board (shallow copy rows to keep it cheap) ---
-    new_board = [row[:] for row in state.board]
-    new_board[r_from][c_from] = None
-    new_board[r_to][c_to] = replace(piece, has_moved=True)
+    # Target square must not hold a friendly piece
+    if board[r1][c1]:
+        tgt_colour, _ = board[r1][c1].split("-")
+        if tgt_colour == colour:
+            raise ValueError("Cannot capture your own piece")
 
-    # --- update castling rights when king or rook moves ---
-    rights = state.castling_rights
-    if piece.kind is Piece.KING:
-        rights = rights.replace("K", "").replace(
-            "Q", "") if piece.color is Color.WHITE else rights
-        rights = rights.replace("k", "").replace(
-            "q", "") if piece.color is Color.BLACK else rights
-    elif piece.kind is Piece.ROOK:
-        if from_sq == "A1":
-            rights = rights.replace("Q", "")
-        if from_sq == "H1":
-            rights = rights.replace("K", "")
-        if from_sq == "A8":
-            rights = rights.replace("q", "")
-        if from_sq == "H8":
-            rights = rights.replace("k", "")
+    # Pseudo-legal move according to the piece’s movement pattern
+    try:
+        ok = LEGALITY_DISPATCH[real_piece](board, colour, r0, c0, r1, c1)
+    except KeyError:
+        raise ValueError(f"Unknown piece type: {real_piece!r}")
+    if not ok:
+        raise ValueError(f"Illegal move for {
+                         colour}-{real_piece}: {from_sq} → {to_sq}")
 
-    # --- en passant bookkeeping ---
-    ep = None
-    if piece.kind is Piece.PAWN and abs(r_to - r_from) == 2:
-        # square *behind* the pawn becomes target (rank between start and dest)
-        mid_rank = (r_to + r_from) // 2
-        ep = coords_to_square(mid_rank, c_from)
-
-    # reset half-move clock on any pawn move or capture
-    is_capture = state.board[r_to][c_to] is not None
-    halfclock = 0 if (
-        piece.kind is Piece.PAWN or is_capture) else state.halfmove_clock + 1
-
-    # fullmove number advances after Black’s move
-    fullmove = state.fullmove_number + \
-        (1 if state.side_to_move is Color.BLACK else 0)
-
-    return GameState(
-        board=new_board,
-        side_to_move=Color.BLACK if state.side_to_move is Color.WHITE else Color.WHITE,
-        castling_rights=rights,
-        en_passant_target=ep,
-        halfmove_clock=halfclock,
-        fullmove_number=fullmove,
-    )
-
-# ─── Example usage ──────────────────────────────────────────────────────────────
+    # All checks passed – perform the move
+    board[r1][c1], board[r0][c0] = board[r0][c0], ""
+    # (At this level we ignore check, check-mate, castling, en-passant, promotion.)
 
 
+# --------------------------------------------------------------------
+# Example
+# --------------------------------------------------------------------
 if __name__ == "__main__":
-    # build a *very* tiny start position: just kings
-    empty = [[None]*8 for _ in range(8)]
-    empty[0][4] = Figure(Piece.KING, Color.WHITE)
-    empty[7][4] = Figure(Piece.KING, Color.BLACK)
-    gs = GameState(empty, Color.WHITE, "KQkq", None, 0, 1)
+    sample_board = [
+        ["black-rook", "black-knight", "black-bishop", "black-queen",
+            "black-king", "black-bishop", "black-knight", "black-rook"],
+        ["black-pawn"] * 8,
+        [""] * 8,
+        [""] * 8,
+        [""] * 8,
+        [""] * 8,
+        ["white-pawn"] * 8,
+        ["white-rook", "white-knight", "white-bishop", "white-queen",
+            "white-king", "white-bishop", "white-knight", "white-rook"]
+    ]
 
-    gs2 = apply_move(["K", "E1", "E2"], gs)
-    print(gs2.board[1][4].kind, gs2.side_to_move)
+    # Advance the white king one square up from e1 → e2 (r7c4 -> r6c4)
+    move_piece(sample_board, ["king", "e1", "e2"])
+    print(*sample_board, sep="\n")
