@@ -1,3 +1,5 @@
+from model.ollama import get_ai_answer
+
 import pygame
 import os
 import re
@@ -248,6 +250,10 @@ def run_chess_gui(board):
         screen.blit(font.render(">", True, (0, 0, 0)), (BUTTON_FORWARD.x + 8, BUTTON_FORWARD.y + 5))
         screen.blit(font.render("Beginner", True, (0, 0, 0)), (BUTTON_BEGINNER.x + 2, BUTTON_BEGINNER.y + 5))
 
+        pygame.draw.rect(screen, (200, 200, 255), BUTTON_AI)
+        screen.blit(font.render("vs AI", True, (0, 0, 0)), (650, 255))
+        screen.blit(font.render(result_message, True, (255, 0, 0)), (635, 205))
+
         show_check_text(screen, font, board, current_turn)
         if not game_over:
             if is_king_in_check(board, current_turn):
@@ -262,9 +268,6 @@ def run_chess_gui(board):
             pygame.draw.rect(screen, (255, 200, 200), (640, 170, 80, 30))
             pygame.draw.rect(screen, (0, 0, 0), (630, 200, 90, 30))
             screen.blit(font.render("Restart", True, (0, 0, 0)), (645, 175))
-            pygame.draw.rect(screen, (200, 200, 255), BUTTON_AI)
-            screen.blit(font.render("vs AI", True, (0, 0, 0)), (650, 255))
-            screen.blit(font.render(result_message, True, (255, 0, 0)), (635, 205))
 
         show_check_text(screen, font, board, current_turn)
         pygame.display.flip()
@@ -275,10 +278,10 @@ def run_chess_gui(board):
 
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if BUTTON_AI.collidepoint(event.pos):
-                    from model.ollama import get_ai_answer
                     if not game_over and current_turn == "black":
                         while True:
                             move_str = get_ai_answer([[str(p) if p else "none" for p in row] for row in board])
+                            print(move_str)
                             try:
                                 _, from_pos, to_pos = move_str.split("-")
                                 from_row = 8 - int(from_pos[1])
@@ -288,7 +291,7 @@ def run_chess_gui(board):
                                 piece = board[from_row][from_col]
                                 if piece and isLegalMove(board, move_str, game_state):
                                     break
-                            except:
+                            except error:
                                 continue
                         try:
                             _, from_pos, to_pos = move_str.split("-")

@@ -41,7 +41,7 @@ def get_ai_answer(board):
     prompts = prompts_front + board_list + prompts_rear
 
     response = requests.post(
-        "http://localhost:11434/api/generate",
+        "http://192.168.219.104:11434/api/generate",
         json={
             "model": "llama3.2",
             "prompt": "\n".join(prompts),
