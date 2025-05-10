@@ -17,6 +17,7 @@ BUTTON_BACK = pygame.Rect(640, 50, 30, 30)
 BUTTON_FORWARD = pygame.Rect(680, 50, 30, 30)
 BUTTON_BEGINNER = pygame.Rect(640, 90, 80, 30)
 BUTTON_RESTART = pygame.Rect(640, 130, 80, 30)
+BUTTON_AI = pygame.Rect(640, 250, 80, 30)
 
 def get_attack_board(board, attacker_color):
     attack_board = [[False for _ in range(8)] for _ in range(8)]
@@ -261,6 +262,8 @@ def run_chess_gui(board):
             pygame.draw.rect(screen, (255, 200, 200), (640, 170, 80, 30))
             pygame.draw.rect(screen, (0, 0, 0), (630, 200, 90, 30))
             screen.blit(font.render("Restart", True, (0, 0, 0)), (645, 175))
+            pygame.draw.rect(screen, (200, 200, 255), BUTTON_AI)
+            screen.blit(font.render("vs AI", True, (0, 0, 0)), (650, 255))
             screen.blit(font.render(result_message, True, (255, 0, 0)), (635, 205))
 
         show_check_text(screen, font, board, current_turn)
@@ -271,6 +274,41 @@ def run_chess_gui(board):
                 running = False
 
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if BUTTON_AI.collidepoint(event.pos):
+                    from model.ollama import get_ai_answer
+                    if not game_over and current_turn == "black":
+                        while True:
+                            move_str = get_ai_answer([[str(p) if p else "none" for p in row] for row in board])
+                            try:
+                                _, from_pos, to_pos = move_str.split("-")
+                                from_row = 8 - int(from_pos[1])
+                                from_col = ord(from_pos[0]) - ord('a')
+                                to_row = 8 - int(to_pos[1])
+                                to_col = ord(to_pos[0]) - ord('a')
+                                piece = board[from_row][from_col]
+                                if piece and isLegalMove(board, move_str, game_state):
+                                    break
+                            except:
+                                continue
+                        try:
+                            _, from_pos, to_pos = move_str.split("-")
+                            from_row = 8 - int(from_pos[1])
+                            from_col = ord(from_pos[0]) - ord('a')
+                            to_row = 8 - int(to_pos[1])
+                            to_col = ord(to_pos[0]) - ord('a')
+                            piece = board[from_row][from_col]
+                            if piece:
+                                if isLegalMove(board, move_str, game_state):
+                                    board[to_row][to_col] = piece
+                                    board[from_row][from_col] = None
+                                    game_state["turnCount"] = turn_count
+                                    turn_count += 1
+                                    move_history.append(move_str)
+                                    board_history.append(copy.deepcopy(board))
+                                    current_turn = "white"
+                        except Exception as e:
+                            print("AI move error:", e)
+                    return
                 if game_over and pygame.Rect(640, 170, 80, 30).collidepoint(event.pos):
                     board = create_initial_board()
                     piece_images = load_piece_images()
@@ -325,7 +363,7 @@ def run_chess_gui(board):
                     piece = board[from_row][from_col]
                     if piece:
                         move_str = f"{piece.kind.capitalize()}-{index_to_pos(from_row, from_col)}-{index_to_pos(row, col)}"
-                        if isLegalMove(board, move_str, game_state) and current_state_index == len(board_history) - 1:
+                        if isLegalMove(board, move_str, game_state) and current_state_index == len(board_history) - 1 and not is_king_in_check_after_move(board, index_to_pos(from_row, from_col), index_to_pos(row, col)):
                             if piece.kind == "king" and abs(col - from_col) == 2:
                                 rook_from = 0 if col < from_col else 7
                                 rook_to = from_col - 1 if col < from_col else from_col + 1
