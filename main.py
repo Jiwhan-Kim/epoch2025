@@ -1,7 +1,9 @@
 import pygame as pg
 
+
 from components.button import Button
 from components.card import Card
+
 
 class App:
     WIDTH: int = 800
@@ -21,7 +23,7 @@ class App:
             pos=(self.WIDTH // 2, self.HEIGHT // 2),
             size=(160, 60),
         )
-        
+
         self.button2 = Card(
             text='Button 2',
             pos=(20, 20),
@@ -36,7 +38,7 @@ class App:
             self._update()
             self._draw()
             self.clock.tick(self.FPS)
-        
+
         self._shutdown()
 
     def _handle_events(self) -> None:
@@ -45,8 +47,9 @@ class App:
                 self.running = False
 
             self.button1.handle_event(event, on_click=self._quit)
-            self.button2.handle_event(event, on_click=lambda: print('Button 2 clicked!'))
-    
+            self.button2.handle_event(
+                event, on_click=lambda: print('Button 2 clicked!'))
+
     def _update(self) -> None:
         pass
 
@@ -58,9 +61,10 @@ class App:
 
     def _quit(self) -> None:
         self.running = False
-    
+
     def _shutdown(self) -> None:
         pg.quit()
+
 
 if __name__ == '__main__':
     app = App()

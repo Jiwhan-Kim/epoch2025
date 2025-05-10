@@ -13,7 +13,7 @@ class Button:
             pos: Tuple[int, int],
             size: Tuple[int, int],
             *,
-            font: str | os.PathLike | None = './assets/PretendardVariable.ttf',
+            font: str | None = './assets/PretendardVariable.ttf',
             font_size: int = 24,
             bg_color: Tuple[int, int, int] = WHITE,
             text_color: Tuple[int, int, int] = BLACK,
@@ -22,28 +22,29 @@ class Button:
         self.text = text
         self.rect = pg.Rect(0, 0, *size)
         self.rect.center = pos
-        
+
         self.bg_color = bg_color
         self.text_color = text_color
         self.border_radius = border_radius
-        
+
         self.font = self._load_font(font, font_size)
         self._render_text()
-    
+
     @staticmethod
     def _load_font(font: str | os.PathLike | None, size: int) -> pg.font.Font:
         if font is None:
             return pg.font.Font(None, size)
-        
+
         font = os.fspath(font)
         if os.path.isfile(font):
             return pg.font.Font(font, size)
-        
+
         return pg.font.SysFont(font, size)
 
     def _render_text(self) -> None:
         if self.text:
-            self._text_surf = self.font.render(self.text, True, self.text_color)
+            self._text_surf = self.font.render(
+                self.text, True, self.text_color)
             self._text_rect = self._text_surf.get_rect(center=self.rect.center)
         else:
             self._text_surf = None
@@ -64,5 +65,5 @@ class Button:
             and event.type == pg.MOUSEBUTTONDOWN
             and event.button == 1
             and self.rect.collidepoint(event.pos)
-        ): on_click()
-
+        ):
+            on_click()
