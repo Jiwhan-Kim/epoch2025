@@ -72,6 +72,7 @@ def run_chess_gui(board):
     dragging_piece = None
     mouse_x, mouse_y = 0, 0
     turn_count = 1
+    current_turn = "white"
     game_state = {
         "lastMove": None
     }
@@ -88,7 +89,7 @@ def run_chess_gui(board):
 
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 col, row = event.pos[0] // SQUARE_SIZE, event.pos[1] // SQUARE_SIZE
-                if board[row][col]:
+                if board[row][col] and board[row][col].color == current_turn:
                     dragging = True
                     dragging_piece = (row, col)
                     mouse_x, mouse_y = event.pos
@@ -124,6 +125,7 @@ def run_chess_gui(board):
                         game_state["lastMove"] = move_str
                         print_board(board)
                         turn_count += 1
+                        current_turn = "black" if current_turn == "white" else "white"
                     else:
                         print(f"Illegal move: {move_str}")
                 dragging = False
