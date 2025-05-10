@@ -1,7 +1,7 @@
 import pygame
 import os
 import re
-from chessMove import isLegalMove
+from chessMove import isLegalMove, Piece
 
 # Constants
 WIDTH, HEIGHT = 640, 640
@@ -39,14 +39,16 @@ def draw_pieces(screen, board, piece_images, dragging_piece=None, dragging_pos=N
                 continue
             if dragging_piece and dragging_piece == (row, col):
                 continue
-            image = piece_images.get(piece)
+            key = f"{piece.color}-{piece.kind}"
+            image = piece_images.get(key)
             if image:
                 screen.blit(image, (col * SQUARE_SIZE, row * SQUARE_SIZE))
 
     if dragging_piece and dragging_pos:
         row, col = dragging_piece
         piece = board[row][col]
-        image = piece_images.get(piece)
+        key = f"{piece.color}-{piece.kind}"
+        image = piece_images.get(key)
         if image:
             rect = image.get_rect(center=dragging_pos)
             screen.blit(image, rect)
@@ -54,7 +56,7 @@ def draw_pieces(screen, board, piece_images, dragging_piece=None, dragging_pos=N
 def print_board(board):
     print("\nCurrent Board State:")
     for row in board:
-        print(["{:>11}".format(cell if cell else "") for cell in row])
+        print([str(cell) if cell else "" for cell in row])
     print("-" * 100)
 
 def index_to_pos(row, col):
@@ -63,12 +65,16 @@ def index_to_pos(row, col):
 def run_chess_gui(board):
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("Chess with Legal Move Check")
+    pygame.display.set_caption("Chess with Class-Based Pieces")
     piece_images = load_piece_images()
 
     dragging = False
     dragging_piece = None
     mouse_x, mouse_y = 0, 0
+    turn_count = 1
+    game_state = {
+        "lastMove": None
+    }
 
     running = True
     while running:
@@ -92,12 +98,32 @@ def run_chess_gui(board):
                 from_row, from_col = dragging_piece
                 piece = board[from_row][from_col]
                 if piece:
-                    piece_type = piece.split('-')[1].capitalize()
-                    move_str = f"{piece_type}-{index_to_pos(from_row, from_col)}-{index_to_pos(row, col)}"
-                    if isLegalMove(board, move_str):
+                    move_str = f"{piece.kind.capitalize()}-{index_to_pos(from_row, from_col)}-{index_to_pos(row, col)}"
+                    if isLegalMove(board, move_str, game_state):
+                        # Castling rook move
+                        if piece.kind == "king" and abs(col - from_col) == 2:
+                            rook_from = 0 if col < from_col else 7
+                            rook_to = from_col - 1 if col < from_col else from_col + 1
+                            board[from_row][rook_to] = board[from_row][rook_from]
+                            board[from_row][rook_from] = None
+                            board[from_row][rook_to].has_moved = True
+
+                        # En passant capture
+                        if piece.kind == "pawn" and col != from_col and board[row][col] is None:
+                            board[from_row][col] = None
+
                         board[row][col] = piece
-                        board[from_row][from_col] = ""
+                        board[from_row][from_col] = None
+
+                        # Update piece state
+                        if piece.kind in ["king", "rook"]:
+                            piece.has_moved = True
+                        if piece.kind == "pawn" and abs(row - from_row) == 2:
+                            piece.double_move_turn = turn_count
+
+                        game_state["lastMove"] = move_str
                         print_board(board)
+                        turn_count += 1
                     else:
                         print(f"Illegal move: {move_str}")
                 dragging = False
@@ -108,17 +134,15 @@ def run_chess_gui(board):
 
     pygame.quit()
 
-# Sample board using "color-piece" format
-sample_board = [
-    ["black-rook", "black-knight", "black-bishop", "black-queen", "black-king", "black-bishop", "black-knight", "black-rook"],
-    ["black-pawn"] * 8,
-    [""] * 8,
-    [""] * 8,
-    [""] * 8,
-    [""] * 8,
-    ["white-pawn"] * 8,
-    ["white-rook", "white-knight", "white-bishop", "white-queen", "white-king", "white-bishop", "white-knight", "white-rook"]
-]
+def create_initial_board():
+    board = [[None for _ in range(8)] for _ in range(8)]
+    order = ["rook", "knight", "bishop", "queen", "king", "bishop", "knight", "rook"]
+    for i in range(8):
+        board[0][i] = Piece("black", order[i])
+        board[1][i] = Piece("black", "pawn")
+        board[6][i] = Piece("white", "pawn")
+        board[7][i] = Piece("white", order[i])
+    return board
 
 if __name__ == "__main__":
-    run_chess_gui(sample_board)
+    run_chess_gui(create_initial_board())
