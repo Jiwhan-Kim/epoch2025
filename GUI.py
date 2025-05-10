@@ -67,14 +67,8 @@ def is_king_in_check_after_move(board, from_pos, to_pos):
 
     return is_king_in_check(temp_board, piece.color)
 
-def update_check_status_after_move(board, moved_color):
-    """
-    Given the new board after a move and the color that just moved,
-    return True if their king is now in check, otherwise False.
-    """
-    return is_king_in_check(board, moved_color)
-
 def show_check_text(screen, font, board, turn):
+    pygame.draw.rect(screen, (0, 0, 0), (630, 140, 90, 20))  # clear area
     if is_king_in_check(board, turn):
         text = font.render("Check!", True, (255, 0, 0))
         screen.blit(text, (645, 140))
@@ -136,15 +130,30 @@ def is_king_checkmate(board, attacker_color):
     """
     Return True if the given color's king is in checkmate.
     """
-    # 1. find king
-    for r in range(8):
-        for c in range(8):
-            piece = board[r][c]
-            if piece and piece.color == attacker_color and piece.kind == "king":
-                king_pos = (r, c)
-                break
-    else:
-        return True  # No king? treat as checkmate
+    if not is_king_in_check(board, attacker_color):
+        return False
+
+    # check all possible moves of all own pieces
+    for r1 in range(8):
+        for c1 in range(8):
+            piece = board[r1][c1]
+            if not piece or piece.color != attacker_color:
+                continue
+            from_pos = f"{chr(c1 + ord('a'))}{8 - r1}"
+            for r2 in range(8):
+                for c2 in range(8):
+                    if r1 == r2 and c1 == c2:
+                        continue
+                    to_pos = f"{chr(c2 + ord('a'))}{8 - r2}"
+                    move_str = f"{piece.kind.capitalize()}-{from_pos}-{to_pos}"
+                    if isLegalMove(board, move_str):
+                        temp_board = copy.deepcopy(board)
+                        temp_board[r2][c2] = temp_board[r1][c1]
+                        temp_board[r1][c1] = None
+                        if not is_king_in_check(temp_board, attacker_color):
+                            return False  # at least one valid move that escapes check
+    return True  # no valid move escapes check
+
 
     from_row, from_col = king_pos
     from_pos = f"{chr(from_col + ord('a'))}{8 - from_row}"
@@ -158,7 +167,7 @@ def is_king_checkmate(board, attacker_color):
             if 0 <= to_row < 8 and 0 <= to_col < 8:
                 to_pos = f"{chr(to_col + ord('a'))}{8 - to_row}"
                 move_str = f"King-{from_pos}-{to_pos}"
-                if isLegalMove(board, move_str):
+                if isLegalMove(board, move_str) and not is_king_in_check_after_move(board, from_pos, to_pos):
                     # simulate move
                     temp_board = copy.deepcopy(board)
                     temp_board[to_row][to_col] = temp_board[from_row][from_col]
@@ -215,7 +224,8 @@ def run_chess_gui(board):
     board_history = [copy.deepcopy(board)]
     current_state_index = 0
     game_state = {
-        "lastMove": None
+        "lastMove": None,
+        "turnCount": turn_count  # now storing numeric turn
     }
     beginner_mode = False
 
@@ -239,17 +249,19 @@ def run_chess_gui(board):
 
         show_check_text(screen, font, board, current_turn)
         if not game_over:
-            if is_king_in_check(board, current_turn) and is_king_checkmate(board, current_turn):
-                result_message = f"{('White' if current_turn == 'black' else 'Black')} wins by checkmate"
-                game_over = True
+            if is_king_in_check(board, current_turn):
+                if is_king_checkmate(board, current_turn):
+                    result_message = f"{('White' if current_turn == 'black' else 'Black')} wins by checkmate"
+                    game_over = True
             elif is_stalemate(board, current_turn):
                 result_message = "Stalemate"
                 game_over = True
 
         if game_over:
             pygame.draw.rect(screen, (255, 200, 200), (640, 170, 80, 30))
+            pygame.draw.rect(screen, (0, 0, 0), (630, 200, 90, 30))
             screen.blit(font.render("Restart", True, (0, 0, 0)), (645, 175))
-            screen.blit(font.render(result_message, True, (255, 0, 0)), (640, 210))
+            screen.blit(font.render(result_message, True, (255, 0, 0)), (635, 205))
 
         show_check_text(screen, font, board, current_turn)
         pygame.display.flip()
@@ -270,7 +282,9 @@ def run_chess_gui(board):
                     move_history.clear()
                     board_history = [copy.deepcopy(board)]
                     current_state_index = 0
-                    game_state["lastMove"] = None
+                    # Removed lastMove reference
+                    game_state["turnCount"] = turn_count
+                    game_state["turnCount"] = turn_count
                     game_over = False
                     result_message = ""
                     continue
@@ -311,7 +325,7 @@ def run_chess_gui(board):
                     piece = board[from_row][from_col]
                     if piece:
                         move_str = f"{piece.kind.capitalize()}-{index_to_pos(from_row, from_col)}-{index_to_pos(row, col)}"
-                        if isLegalMove(board, move_str, game_state) and current_state_index == len(board_history) - 1 and not is_king_in_check(board, current_turn):
+                        if isLegalMove(board, move_str, game_state) and current_state_index == len(board_history) - 1:
                             if piece.kind == "king" and abs(col - from_col) == 2:
                                 rook_from = 0 if col < from_col else 7
                                 rook_to = from_col - 1 if col < from_col else from_col + 1
@@ -330,7 +344,7 @@ def run_chess_gui(board):
                             if piece.kind == "pawn" and abs(row - from_row) == 2:
                                 piece.double_move_turn = turn_count
 
-                            game_state["lastMove"] = move_str
+                            game_state["turnCount"] = turn_count  # Removed lastMove usage
                             move_history.append(move_str)
                             board_history = board_history[:current_state_index + 1]
                             board_history.append(copy.deepcopy(board))
