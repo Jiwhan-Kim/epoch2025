@@ -5,6 +5,7 @@ import os
 import re
 import copy
 from chessMove import isLegalMove, Piece, getAttackPoses
+import time
 
 # Constants
 WIDTH, HEIGHT = 720, 640
@@ -272,6 +273,10 @@ def run_chess_gui(board):
     piece_images = load_piece_images()
     font = pygame.font.SysFont(None, 24)
 
+    white_time = 600  # seconds (10 minutes)
+    black_time = 600
+    last_time = time.time()
+
     dragging = False
     dragging_piece = None
     mouse_x, mouse_y = 0, 0
@@ -306,9 +311,29 @@ def run_chess_gui(board):
 
         pygame.draw.rect(screen, (200, 200, 255), BUTTON_AI)
         screen.blit(font.render("AI move", True, (0, 0, 0)), (650, 255))
+        pygame.draw.rect(screen, (255, 255, 255), (630, 300, 90, 50))  # clear time display background
         screen.blit(font.render(result_message, True, (255, 0, 0)), (635, 205))
 
         show_check_text(screen, font, board, current_turn)
+
+        # 시간 표시
+        elapsed = time.time() - last_time
+        if not game_over:
+            if current_turn == "white":
+                white_time -= elapsed
+            else:
+                black_time -= elapsed
+        last_time = time.time()
+
+        screen.blit(font.render(f"W: {int(white_time//60):02}:{int(white_time%60):02}", True, (0,0,0)), (640, 300))
+        screen.blit(font.render(f"B: {int(black_time//60):02}:{int(black_time%60):02}", True, (0,0,0)), (640, 320))
+
+        if white_time <= 0:
+            result_message = "Black wins on time"
+            game_over = True
+        elif black_time <= 0:
+            result_message = "White wins on time"
+            game_over = True
         if not game_over:
             if is_king_in_check(board, current_turn):
                 if is_king_checkmate(board, current_turn):
@@ -368,7 +393,8 @@ def run_chess_gui(board):
                                     print_board(board)
 
                                     turn_count += 1
-                                    current_turn = "black" if current_turn == "white" else "white"
+                            current_turn = "black" if current_turn == "white" else "white"
+                            last_time = time.time()
                         except Exception as e:
                             print("AI move error:", e)
 
