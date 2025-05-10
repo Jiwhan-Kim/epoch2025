@@ -94,3 +94,57 @@ def isLegalMove(board, move_str, state=None):
         return False
 
     return False
+
+def getPawnAttackSquares(board, position):
+    """
+    Return list of squares that the pawn at 'position' can attack (not move to).
+    Only diagonal capture squares, regardless of whether a piece is there.
+    """
+    r = 8 - int(position[1])
+    c = ord(position[0].lower()) - ord('a')
+
+    if not (0 <= r < 8 and 0 <= c < 8):
+        return []
+
+    piece = board[r][c]
+    if not piece or piece.kind != 'pawn':
+        return []
+
+    direction = -1 if piece.color == 'white' else 1
+    attack_squares = []
+
+    for dc in [-1, 1]:
+        new_r = r + direction
+        new_c = c + dc
+        if 0 <= new_r < 8 and 0 <= new_c < 8:
+            attack_squares.append((new_r, new_c))
+
+    return attack_squares
+
+
+def getAttackPoses(board, piece_type, position):
+    """
+    Return a list of positions the given piece type can attack from the given position.
+    e.g., getAttackPoses(board, "KING", "e4")
+    """
+    poses = []
+    r1 = 8 - int(position[1])
+    c1 = ord(position[0].lower()) - ord('a')
+    piece_type = piece_type.lower()
+
+    piece = board[r1][c1]
+    if not piece or piece.kind != piece_type:
+        return []
+
+    if piece_type == "pawn":
+        return getPawnAttackSquares(board, position)
+
+    for r2 in range(8):
+        for c2 in range(8):
+            if r1 == r2 and c1 == c2:
+                continue
+            move_str = f"{piece_type.capitalize()}-{position}-{chr(c2 + 97)}{8 - r2}"
+            if isLegalMove(board, move_str):
+                poses.append((r2, c2))
+
+    return poses
